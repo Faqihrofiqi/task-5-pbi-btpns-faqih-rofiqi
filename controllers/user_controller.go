@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"strings"
 
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 func LoginUser(w http.ResponseWriter, r *http.Request) {
 	var userInput models.User
+
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&userInput); err != nil {
 		response := map[string]string{"message": err.Error()}
@@ -27,11 +29,22 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
+
 	var user models.User
-	if err := database.PG.Where("username = ?", userInput.Username).First(&user).Error; err != nil {
+	var queryCondition string
+
+	if strings.Contains(userInput.Username, "@") {
+
+		queryCondition = "email = ?"
+	} else {
+
+		queryCondition = "username = ?"
+	}
+
+	if err := database.PG.Where(queryCondition, userInput.Username).First(&user).Error; err != nil {
 		switch err {
 		case gorm.ErrRecordNotFound:
-			response := map[string]string{"message": "username not found"}
+			response := map[string]string{"message": "Username or email not found"}
 			helpers.ResponseJSON(w, http.StatusUnauthorized, response)
 			return
 		default:
@@ -42,7 +55,7 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(userInput.Password)); err != nil {
-		response := map[string]string{"message": "wrong password"}
+		response := map[string]string{"message": "Wrong password"}
 		helpers.ResponseJSON(w, http.StatusUnauthorized, response)
 		return
 	}
@@ -64,13 +77,15 @@ func LoginUser(w http.ResponseWriter, r *http.Request) {
 		helpers.ResponseJSON(w, http.StatusInternalServerError, response)
 		return
 	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "token",
 		Path:     "/",
 		Value:    token,
 		HttpOnly: true,
 	})
-	response := map[string]string{"message": "Login Sukses"}
+
+	response := map[string]string{"message": "Login successful"}
 	helpers.ResponseJSON(w, http.StatusOK, response)
 }
 
